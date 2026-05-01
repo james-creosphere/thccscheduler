@@ -1,0 +1,1288 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Dracut Dispensary — Scheduling Utility</title>
+<style>
+  :root {
+    --bg: #0f0f11;
+    --surface: #1a1a1f;
+    --surface2: #222229;
+    --border: rgba(255,255,255,0.08);
+    --border2: rgba(255,255,255,0.14);
+    --text: #f0ede8;
+    --text2: #9b9890;
+    --text3: #6b6866;
+    --accent: #7c6af0;
+    --accent2: #5a4dd4;
+    --green: #3fb87a;
+    --amber: #e9a23b;
+    --red: #e55a5a;
+    --blue: #4a9fe8;
+    --teal: #2db89a;
+    --font: 'DM Mono', 'Courier New', monospace;
+    --sans: 'DM Sans', system-ui, sans-serif;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: var(--sans); min-height: 100vh; }
+
+  @import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@300;400;500&family=DM+Sans:wght@300;400;500;600&display=swap');
+
+  /* Nav */
+  .nav { display: flex; align-items: center; gap: 0; border-bottom: 1px solid var(--border); background: var(--surface); position: sticky; top: 0; z-index: 100; }
+  .nav-logo { padding: 0 1.5rem; height: 52px; display: flex; align-items: center; gap: 8px; border-right: 1px solid var(--border); }
+  .nav-logo-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--accent); }
+  .nav-logo-text { font-size: 13px; font-weight: 500; letter-spacing: 0.08em; color: var(--text); }
+  .nav-tabs { display: flex; flex: 1; }
+  .nav-tab { padding: 0 1.25rem; height: 52px; display: flex; align-items: center; font-size: 13px; color: var(--text2); cursor: pointer; border-right: 1px solid var(--border); transition: all 0.15s; letter-spacing: 0.02em; position: relative; }
+  .nav-tab:hover { color: var(--text); background: rgba(255,255,255,0.03); }
+  .nav-tab.active { color: var(--text); }
+  .nav-tab.active::after { content: ''; position: absolute; bottom: 0; left: 0; right: 0; height: 2px; background: var(--accent); }
+  .nav-actions { padding: 0 1rem; display: flex; gap: 8px; }
+  .btn { padding: 6px 14px; border-radius: 6px; font-size: 12px; font-family: var(--sans); cursor: pointer; transition: all 0.15s; border: 1px solid var(--border2); background: transparent; color: var(--text2); letter-spacing: 0.03em; }
+  .btn:hover { background: var(--surface2); color: var(--text); }
+  .btn-primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .btn-primary:hover { background: var(--accent2); }
+  .btn-sm { padding: 4px 10px; font-size: 11px; }
+
+  /* Pages */
+  .page { display: none; padding: 1.5rem; max-width: 1300px; margin: 0 auto; }
+  .page.active { display: block; }
+
+  /* Section headers */
+  .section-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 1.25rem; }
+  .section-title { font-size: 14px; font-weight: 500; color: var(--text2); letter-spacing: 0.06em; text-transform: uppercase; }
+  .badge { display: inline-flex; align-items: center; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 500; }
+  .badge-purple { background: rgba(124,106,240,0.15); color: var(--accent); }
+  .badge-green { background: rgba(63,184,122,0.15); color: var(--green); }
+  .badge-amber { background: rgba(233,162,59,0.15); color: var(--amber); }
+  .badge-red { background: rgba(229,90,90,0.15); color: var(--red); }
+
+  /* Summary cards */
+  .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; margin-bottom: 1.5rem; }
+  .stat-card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 1rem; }
+  .stat-label { font-size: 11px; color: var(--text3); letter-spacing: 0.05em; text-transform: uppercase; margin-bottom: 6px; }
+  .stat-val { font-size: 22px; font-weight: 500; }
+  .stat-sub { font-size: 11px; color: var(--text3); margin-top: 2px; }
+
+  /* Schedule grid */
+  .schedule-wrapper { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; margin-bottom: 1.5rem; }
+  .schedule-controls { display: flex; gap: 8px; padding: 12px 16px; border-bottom: 1px solid var(--border); align-items: center; flex-wrap: wrap; }
+  .week-nav { display: flex; align-items: center; gap: 8px; }
+  .week-display { font-size: 13px; font-weight: 500; min-width: 200px; text-align: center; }
+  .schedule-grid { overflow-x: auto; }
+  table.sched { width: 100%; border-collapse: collapse; font-size: 12px; min-width: 900px; }
+  .sched th { background: var(--surface2); padding: 8px 10px; text-align: left; font-weight: 500; font-size: 11px; color: var(--text2); letter-spacing: 0.04em; border-bottom: 1px solid var(--border); position: sticky; top: 0; }
+  .sched th.day-col { text-align: center; width: 120px; }
+  .sched td { padding: 6px 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  .sched td.staff-name { font-size: 12px; font-weight: 500; white-space: nowrap; border-right: 1px solid var(--border); }
+  .sched td.day-cell { cursor: pointer; transition: background 0.1s; min-height: 36px; }
+  .sched td.day-cell:hover { background: rgba(255,255,255,0.03); }
+  .shift-pill { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; border-radius: 4px; font-size: 10px; font-weight: 500; cursor: pointer; white-space: nowrap; margin: 1px; }
+  .shift-open { background: rgba(124,106,240,0.2); color: var(--accent); border: 1px solid rgba(124,106,240,0.3); }
+  .shift-close { background: rgba(233,162,59,0.2); color: var(--amber); border: 1px solid rgba(233,162,59,0.3); }
+  .shift-mid { background: rgba(74,159,232,0.2); color: var(--blue); border: 1px solid rgba(74,159,232,0.3); }
+  .shift-off { background: rgba(229,90,90,0.12); color: var(--red); border: 1px solid rgba(229,90,90,0.25); }
+  .add-shift-btn { display: inline-flex; align-items: center; gap: 3px; padding: 2px 6px; border-radius: 4px; font-size: 10px; color: var(--text3); border: 1px dashed var(--border2); cursor: pointer; }
+  .add-shift-btn:hover { color: var(--text); border-color: var(--accent); }
+  .shift-admin { background: rgba(45,184,154,0.2); color: var(--teal); border: 1px solid rgba(45,184,154,0.3); }
+  .shift-late { background: rgba(220,80,180,0.2); color: #dc50b4; border: 1px solid rgba(220,80,180,0.35); }
+
+  /* Role badge */
+  .role-kh { font-size: 9px; color: var(--amber); margin-left: 4px; }
+  .role-mod { font-size: 9px; color: var(--accent); margin-left: 4px; }
+
+  /* Staff panel */
+  .staff-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px; }
+  .staff-card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 1rem; transition: border-color 0.15s; }
+  .staff-card:hover { border-color: var(--border2); }
+  .staff-card-header { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 10px; }
+  .staff-avatar { width: 36px; height: 36px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 500; flex-shrink: 0; }
+  .staff-info { flex: 1; margin-left: 10px; }
+  .staff-name-card { font-size: 13px; font-weight: 500; }
+  .staff-role-card { font-size: 11px; color: var(--text3); margin-top: 1px; }
+  .avail-days { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 8px; }
+  .day-chip { padding: 2px 7px; border-radius: 4px; font-size: 10px; font-weight: 500; }
+  .day-avail { background: rgba(63,184,122,0.15); color: var(--green); }
+  .day-unavail { background: rgba(229,90,90,0.15); color: var(--red); text-decoration: line-through; }
+  .staff-notes-card { font-size: 11px; color: var(--text3); margin-top: 8px; line-height: 1.5; border-top: 1px solid var(--border); padding-top: 8px; max-height: 60px; overflow: hidden; position: relative; }
+  .staff-notes-card.expanded { max-height: none; }
+
+  /* Conflicts panel */
+  .conflict-list { display: flex; flex-direction: column; gap: 8px; }
+  .conflict-item { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 12px 16px; display: flex; gap: 12px; align-items: flex-start; }
+  .conflict-icon { width: 28px; height: 28px; border-radius: 6px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; font-size: 13px; }
+  .conflict-avail { background: rgba(229,90,90,0.15); }
+  .conflict-hours { background: rgba(233,162,59,0.15); }
+  .conflict-info { background: rgba(74,159,232,0.15); }
+  .conflict-title { font-size: 13px; font-weight: 500; }
+  .conflict-desc { font-size: 12px; color: var(--text2); margin-top: 3px; }
+
+  /* Hours summary */
+  .hours-table { width: 100%; border-collapse: collapse; }
+  .hours-table th { font-size: 11px; color: var(--text3); padding: 6px 10px; text-align: left; border-bottom: 1px solid var(--border); text-transform: uppercase; letter-spacing: 0.05em; }
+  .hours-table td { font-size: 12px; padding: 8px 10px; border-bottom: 1px solid var(--border); }
+  .hours-bar-wrap { width: 100px; background: var(--surface2); border-radius: 3px; height: 4px; display: inline-block; vertical-align: middle; }
+  .hours-bar { height: 4px; border-radius: 3px; background: var(--accent); }
+  .hours-over { background: var(--red); }
+  .hours-under { background: var(--amber); }
+
+  /* Import/Export */
+  .io-panel { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 1.25rem; margin-bottom: 1.25rem; }
+  .io-title { font-size: 13px; font-weight: 500; margin-bottom: 1rem; }
+  textarea.code-box { width: 100%; background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 10px; font-family: var(--font); font-size: 11px; color: var(--text2); resize: vertical; min-height: 120px; }
+  textarea.code-box:focus { outline: none; border-color: var(--accent); }
+
+  /* Availability form */
+  .avail-form { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 1.25rem; margin-bottom: 1.25rem; }
+  .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px; }
+  .form-group { display: flex; flex-direction: column; gap: 6px; }
+  .form-label { font-size: 11px; color: var(--text2); letter-spacing: 0.04em; text-transform: uppercase; }
+  input[type="text"], input[type="email"], select { background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 7px 10px; font-size: 12px; font-family: var(--sans); color: var(--text); width: 100%; }
+  input:focus, select:focus { outline: none; border-color: var(--accent); }
+  select { cursor: pointer; }
+  select option { background: var(--surface2); }
+  .day-toggles { display: flex; gap: 6px; flex-wrap: wrap; }
+  .day-toggle { padding: 4px 10px; border-radius: 5px; font-size: 11px; cursor: pointer; border: 1px solid var(--border2); color: var(--text2); transition: all 0.15s; user-select: none; }
+  .day-toggle.off { background: rgba(229,90,90,0.15); color: var(--red); border-color: rgba(229,90,90,0.3); }
+
+  /* Modal */
+  .modal-backdrop { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 1000; align-items: center; justify-content: center; }
+  .modal-backdrop.open { display: flex; }
+  .modal { background: var(--surface); border: 1px solid var(--border2); border-radius: 12px; padding: 1.5rem; width: 420px; max-width: 95vw; }
+  .modal-title { font-size: 15px; font-weight: 500; margin-bottom: 1rem; }
+  .modal-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 1rem; }
+
+  /* Hours allotment bar */
+  .allotment-display { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 1.25rem; margin-bottom: 1.5rem; }
+  .allotment-row { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; }
+  .allotment-label { font-size: 12px; color: var(--text2); width: 130px; flex-shrink: 0; }
+  .allotment-bar-wrap { flex: 1; background: var(--surface2); border-radius: 4px; height: 6px; position: relative; }
+  .allotment-bar-fill { height: 6px; border-radius: 4px; transition: width 0.3s; }
+  .allotment-count { font-size: 12px; font-weight: 500; width: 80px; text-align: right; }
+  .allotment-target { font-size: 11px; color: var(--text3); width: 60px; text-align: right; }
+
+  /* Scrollbar */
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: var(--bg); }
+  ::-webkit-scrollbar-thumb { background: var(--surface2); border-radius: 3px; }
+  ::-webkit-scrollbar-thumb:hover { background: var(--border2); }
+
+  .text-green { color: var(--green); }
+  .text-red { color: var(--red); }
+  .text-amber { color: var(--amber); }
+  .text-accent { color: var(--accent); }
+
+  select.role-select { padding: 2px 6px; font-size: 11px; border-radius: 4px; height: auto; width: auto; }
+  /* Gantt */
+  .gantt-wrapper { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; margin-bottom: 1.5rem; }
+  .gantt-day-tabs { display: flex; border-bottom: 1px solid var(--border); }
+  .gantt-day-tab { flex: 1; padding: 8px; text-align: center; font-size: 11px; font-weight: 500; cursor: pointer; color: var(--text3); letter-spacing: 0.04em; transition: all 0.15s; border-right: 1px solid var(--border); }
+  .gantt-day-tab:last-child { border-right: none; }
+  .gantt-day-tab:hover { color: var(--text); background: rgba(255,255,255,0.03); }
+  .gantt-day-tab.active { color: var(--text); background: rgba(124,106,240,0.08); border-bottom: 2px solid var(--accent); }
+  .gantt-grid { overflow-x: auto; padding: 0; }
+  .gantt-table { width: 100%; border-collapse: collapse; min-width: 900px; }
+  .gantt-table .g-name { width: 140px; min-width: 140px; padding: 0 10px; font-size: 11px; font-weight: 500; border-right: 1px solid var(--border); white-space: nowrap; height: 28px; vertical-align: middle; }
+  .gantt-table .g-cell { padding: 0; border-right: 1px solid rgba(255,255,255,0.04); height: 28px; position: relative; }
+  .gantt-table .g-hour-header { font-size: 9px; color: var(--text3); text-align: center; padding: 4px 0; border-right: 1px solid rgba(255,255,255,0.04); letter-spacing: 0.03em; }
+  .gantt-table .g-name-header { font-size: 9px; color: var(--text3); padding: 4px 10px; border-right: 1px solid var(--border); letter-spacing: 0.05em; text-transform: uppercase; }
+  .gantt-bar { position: absolute; top: 4px; bottom: 4px; border-radius: 3px; display: flex; align-items: center; justify-content: center; font-size: 9px; font-weight: 600; letter-spacing: 0.04em; white-space: nowrap; overflow: hidden; padding: 0 4px; cursor: default; }
+  .gantt-role-header { background: var(--bg); }
+  .g-open-hour { background: rgba(255,255,255,0.03); }
+  .g-store-hour { background: rgba(124,106,240,0.04); }
+  .g-now-line { position: absolute; top: 0; bottom: 0; width: 1px; background: var(--red); opacity: 0.5; pointer-events: none; z-index: 10; }
+  .gantt-legend { display: flex; gap: 16px; padding: 10px 16px; border-top: 1px solid var(--border); flex-wrap: wrap; }
+  .gantt-legend-item { display: flex; align-items: center; gap: 6px; font-size: 10px; color: var(--text3); }
+  .gantt-legend-swatch { width: 20px; height: 8px; border-radius: 2px; }
+  .gantt-hours-summary { padding: 8px 16px; border-top: 1px solid var(--border); font-size: 11px; color: var(--text2); display: flex; gap: 20px; }
+</style>
+</head>
+<body>
+
+<nav class="nav">
+  <div class="nav-logo">
+    <div class="nav-logo-dot"></div>
+    <span class="nav-logo-text">DRACUT // SCHEDULER</span>
+  </div>
+  <div class="nav-tabs">
+    <div class="nav-tab active" onclick="showPage('schedule')">Schedule</div>
+    <div class="nav-tab" onclick="showPage('staff')">Staff & Availability</div>
+    <div class="nav-tab" onclick="showPage('conflicts')">Conflicts</div>
+    <div class="nav-tab" onclick="showPage('hours')">Hours Summary</div>
+    <div class="nav-tab" onclick="showPage('io')">Import / Export</div>
+    <div class="nav-tab" onclick="showPage('gantt')">Gantt</div>
+  </div>
+  <div class="nav-actions">
+    <button class="btn btn-sm" onclick="showPage('avail-form')">+ Update Availability</button>
+    <button class="btn btn-sm btn-primary" onclick="exportSchedule()">Export to Shifts</button>
+  </div>
+</nav>
+
+<!-- SCHEDULE PAGE -->
+<div class="page active" id="page-schedule">
+  <div class="section-header">
+    <span class="section-title">Weekly Schedule</span>
+    <div class="week-nav">
+      <button class="btn btn-sm" onclick="changeWeek(-1)">&#8592;</button>
+      <span class="week-display" id="week-display"></span>
+      <button class="btn btn-sm" onclick="changeWeek(1)">&#8594;</button>
+    </div>
+  </div>
+
+  <div class="stats-grid" id="sched-stats"></div>
+
+  <!-- Hours allotment -->
+  <div class="allotment-display">
+    <div style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:12px;">Hours Allotment — Extended Hours Model (Target: 588.75 hrs/wk)</div>
+    <div id="allotment-rows"></div>
+  </div>
+
+  <div class="schedule-wrapper">
+    <div class="schedule-controls">
+      <input type="text" placeholder="Filter staff..." id="sched-filter" style="width:180px;padding:5px 10px;font-size:12px;" oninput="renderSchedule()">
+      <select onchange="renderSchedule()" id="role-filter" style="font-size:12px;padding:5px;height:auto;">
+        <option value="">All roles</option>
+        <option value="Keyholder">Keyholders / MOD</option>
+        <option value="Associate">Associates</option>
+        <option value="GM">GM</option>
+      </select>
+      <div style="margin-left:auto;font-size:11px;color:var(--text3);">Click any cell to add/edit shift</div>
+    </div>
+    <div class="schedule-grid">
+      <table class="sched" id="sched-table">
+        <thead id="sched-head"></thead>
+        <tbody id="sched-body"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- STAFF PAGE -->
+<div class="page" id="page-staff">
+  <div class="section-header">
+    <span class="section-title">Staff Directory — Dracut</span>
+    <span id="staff-count-badge" class="badge badge-purple"></span>
+  </div>
+  <div class="staff-grid" id="staff-grid"></div>
+</div>
+
+<!-- CONFLICTS PAGE -->
+<div class="page" id="page-conflicts">
+  <div class="section-header">
+    <span class="section-title">Conflicts & Warnings</span>
+  </div>
+  <div class="conflict-list" id="conflict-list"></div>
+</div>
+
+<!-- HOURS PAGE -->
+<div class="page" id="page-hours">
+  <div class="section-header">
+    <span class="section-title">Hours Summary</span>
+    <span class="badge badge-amber" id="total-hours-badge"></span>
+  </div>
+  <div class="schedule-wrapper">
+    <table class="hours-table" id="hours-table">
+      <thead>
+        <tr>
+          <th>Staff Member</th>
+          <th>Role</th>
+          <th>Scheduled Hrs</th>
+          <th>Prior Week Hrs</th>
+          <th>vs Prior Week</th>
+          <th>Distribution</th>
+        </tr>
+      </thead>
+      <tbody id="hours-body"></tbody>
+    </table>
+  </div>
+</div>
+
+<!-- IMPORT/EXPORT PAGE -->
+<div class="page" id="page-io">
+  <div class="section-header">
+    <span class="section-title">Import / Export</span>
+  </div>
+
+  <div class="io-panel">
+    <div class="io-title">Export Schedule (Shifts Import Format)</div>
+    <p style="font-size:12px;color:var(--text2);margin-bottom:12px;">Generate the CSV format compatible with the Shifts scheduling system.</p>
+    <button class="btn btn-primary" onclick="generateShiftsCSV()">Generate CSV</button>
+    <textarea class="code-box" id="shifts-csv-out" style="margin-top:12px;" placeholder="Click Generate CSV to produce output..."></textarea>
+    <div style="margin-top:8px;display:flex;gap:8px;">
+      <button class="btn btn-sm" onclick="copyCSV()">Copy CSV</button>
+      <button class="btn btn-sm" onclick="downloadCSV()">Download .xlsx</button>
+    </div>
+  </div>
+
+  <div class="io-panel">
+    <div class="io-title">Export Schedule JSON</div>
+    <p style="font-size:12px;color:var(--text2);margin-bottom:12px;">Full schedule data with availability context for archiving or re-import.</p>
+    <button class="btn btn-primary" onclick="exportJSON()">Export JSON</button>
+    <textarea class="code-box" id="json-out" style="margin-top:12px;" placeholder="Click Export JSON..."></textarea>
+    <div style="margin-top:8px;">
+      <button class="btn btn-sm" onclick="downloadJSON()">Download JSON</button>
+    </div>
+  </div>
+
+  <div class="io-panel">
+    <div class="io-title">Import JSON Schedule</div>
+    <p style="font-size:12px;color:var(--text2);margin-bottom:12px;">Paste a previously exported JSON to restore a schedule.</p>
+    <textarea class="code-box" id="json-in" placeholder="Paste JSON here..."></textarea>
+    <div style="margin-top:8px;">
+      <button class="btn btn-primary" onclick="importJSON()">Import</button>
+    </div>
+  </div>
+</div>
+
+<!-- GANTT PAGE -->
+<div class="page" id="page-gantt">
+  <div class="section-header">
+    <span class="section-title">Daily Gantt View</span>
+    <div style="display:flex;gap:8px;align-items:center;">
+      <span style="font-size:11px;color:var(--text3);">Grouped by role · Time axis 7am – midnight</span>
+    </div>
+  </div>
+  <div class="gantt-wrapper">
+    <div class="gantt-day-tabs" id="gantt-day-tabs"></div>
+    <div class="gantt-grid">
+      <table class="gantt-table" id="gantt-table"></table>
+    </div>
+    <div class="gantt-legend">
+      <div class="gantt-legend-item"><div class="gantt-legend-swatch" style="background:#7c6af0;opacity:0.85;"></div>MOD Open / Mid / Close</div>
+      <div class="gantt-legend-item"><div class="gantt-legend-swatch" style="background:#3fb87a;opacity:0.85;"></div>Security Open / Close</div>
+      <div class="gantt-legend-item"><div class="gantt-legend-swatch" style="background:#4a9fe8;opacity:0.85;"></div>Greeter Open / Close</div>
+      <div class="gantt-legend-item"><div class="gantt-legend-swatch" style="background:#e9a23b;opacity:0.85;"></div>Mid</div>
+      <div class="gantt-legend-item"><div class="gantt-legend-swatch" style="background:#dc50b4;opacity:0.85;"></div>Cashier Close</div>
+      <div class="gantt-legend-item"><div class="gantt-legend-swatch" style="background:#2db89a;opacity:0.85;"></div>Admin</div>
+    </div>
+    <div class="gantt-hours-summary" id="gantt-summary"></div>
+  </div>
+</div>
+<!-- AVAILABILITY FORM PAGE -->
+<div class="page" id="page-avail-form">
+  <div class="section-header">
+    <span class="section-title">Update Availability</span>
+    <button class="btn btn-sm" onclick="showPage('staff')">← Back to Staff</button>
+  </div>
+  <div class="avail-form">
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">Staff Member</label>
+        <select id="avail-staff-select">
+          <option value="">Select...</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Role</label>
+        <select id="avail-role-select">
+          <option value="Associate">Associate</option>
+          <option value="Keyholder">Keyholder / MOD</option>
+          <option value="GM">GM</option>
+        </select>
+      </div>
+    </div>
+    <div class="form-group" style="margin-bottom:12px;">
+      <label class="form-label">Days Requested OFF (click to toggle)</label>
+      <div class="day-toggles" id="avail-days">
+        <div class="day-toggle" data-day="Sunday">Sun</div>
+        <div class="day-toggle" data-day="Monday">Mon</div>
+        <div class="day-toggle" data-day="Tuesday">Tue</div>
+        <div class="day-toggle" data-day="Wednesday">Wed</div>
+        <div class="day-toggle" data-day="Thursday">Thu</div>
+        <div class="day-toggle" data-day="Friday">Fri</div>
+        <div class="day-toggle" data-day="Saturday">Sat</div>
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">Earliest Available Time</label>
+        <input type="text" id="avail-earliest" placeholder="e.g. 8:00 AM">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Preferred Hours/Week</label>
+        <input type="text" id="avail-hours" placeholder="e.g. 32">
+      </div>
+    </div>
+    <div class="form-group" style="margin-bottom:12px;">
+      <label class="form-label">Availability Notes</label>
+      <textarea class="code-box" id="avail-notes" style="min-height:80px;" placeholder="Any restrictions, preferences, or special circumstances..."></textarea>
+    </div>
+    <div style="display:flex;gap:8px;">
+      <button class="btn btn-primary" onclick="saveAvailability()">Save Availability</button>
+      <button class="btn" onclick="showPage('staff')">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- Shift edit modal -->
+<div class="modal-backdrop" id="shift-modal">
+  <div class="modal">
+    <div class="modal-title" id="modal-title">Edit Shift</div>
+    <div class="form-group" style="margin-bottom:12px;">
+      <label class="form-label">Shift Type</label>
+      <select id="modal-type">
+        <option value="open">MOD Open (7:00 AM – 3:30 PM)</option>
+        <option value="open-security">Security Open (7:30 AM – 3:30 PM)</option>
+        <option value="open-greeter">Greeter Open (7:30 AM – 3:30 PM)</option>
+        <option value="mid">MOD Mid (11:30 AM – 8:00 PM)</option>
+        <option value="mid-bt">Mid (12:00 PM – 8:00 PM)</option>
+        <option value="close-wed">MOD Close Sun–Wed (2:00 PM – 10:30 PM)</option>
+        <option value="close-wed-bt">Closing BT Sun–Wed (2:30 PM – 10:00 PM)</option>
+        <option value="close-thu">MOD Close Thu–Sat (3:00 PM – 11:00 PM)</option>
+        <option value="close-thu-bt">Closing BT Thu–Sat (2:30 PM – 11:00 PM)</option>
+        <option value="close-late-sw">Cashier Close Sun–Wed (3:00 PM – 11:30 PM)</option>
+        <option value="close-late-th">Cashier Close Thu–Sat (3:30 PM – 11:30 PM)</option>
+        <option value="custom">Custom...</option>
+        <option value="off">Day Off / Remove</option>
+      </select>
+    </div>
+    <div id="modal-custom-times" style="display:none;">
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Start Time</label>
+          <input type="text" id="modal-start" placeholder="e.g. 10:00 AM">
+        </div>
+        <div class="form-group">
+          <label class="form-label">End Time</label>
+          <input type="text" id="modal-end" placeholder="e.g. 6:00 PM">
+        </div>
+      </div>
+    </div>
+    <div class="form-group" style="margin-bottom:12px;">
+      <label class="form-label">Label / Role</label>
+      <input type="text" id="modal-label" placeholder="e.g. Opening MOD, Associate">
+    </div>
+    <div class="form-group">
+      <label class="form-label">Notes</label>
+      <input type="text" id="modal-notes" placeholder="Optional shift notes">
+    </div>
+    <div class="modal-actions">
+      <button class="btn" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="saveShift()">Save</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const DAYS = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+const DAY_SHORT = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+
+// New hours: Sun-Wed 8am-10pm, Thu-Sat 8am-11pm
+const NEW_HOURS = {
+  Sunday: { open: '8:00 AM', close: '10:00 PM' },
+  Monday: { open: '8:00 AM', close: '10:00 PM' },
+  Tuesday: { open: '8:00 AM', close: '10:00 PM' },
+  Wednesday: { open: '8:00 AM', close: '10:00 PM' },
+  Thursday: { open: '8:00 AM', close: '11:00 PM' },
+  Friday: { open: '8:00 AM', close: '11:00 PM' },
+  Saturday: { open: '8:00 AM', close: '11:00 PM' },
+};
+
+// Staff from Airtable
+let staff = [
+  { name: 'Adames, Nicole', firstName: 'Nicole', role: 'Associate', daysOff: ['Tuesday','Friday','Wednesday'], notes: 'Still on medical restrictions, max 25hrs/week. OK to return without restrictions soon. AM preferred.', schedNotes: 'Nephew school pickup duties.', hoursTarget: 25.0 },
+  { name: 'Camilo, Radhames', firstName: 'Randy', role: 'Associate', daysOff: ['Monday','Tuesday','Wednesday','Thursday'], notes: 'Available Fri after 5pm, Sat/Sun all day.', schedNotes: '', hoursTarget: 14.2 },
+  { name: 'Davis, Monique', firstName: 'Monique', role: 'Associate', daysOff: ['Monday'], notes: 'Full-time day job 8am-4:30pm Mon-Fri. Available weekdays at 5:30pm+, weekends all day.', schedNotes: '', hoursTarget: 15.0 },
+  { name: 'Dellea, Samuel', firstName: 'Sam', role: 'Associate', daysOff: [], notes: '9-5 or 11-7 preferred to avoid Rte 213 rush hour congestion 6:30-8:30am.', schedNotes: '', hoursTarget: null },
+  { name: 'Demers, Andy', firstName: 'Andy', role: 'Associate', daysOff: [], notes: 'Wants full or near-full time. Prefers 6-8hr shifts.', schedNotes: '', hoursTarget: 22.0 },
+  { name: 'Edwards, Jessica', firstName: 'Jessica', role: 'Keyholder', daysOff: ['Sunday','Monday'], notes: 'Opening person preferred. Would love Sun/Mon off.', schedNotes: '', hoursTarget: null },
+  { name: 'Gibbons, Brenna', firstName: 'Brenna', role: 'Associate', daysOff: ['Wednesday'], notes: 'Therapy every Wednesday at 3pm. Runs art markets on weekends 2-3x/month.', schedNotes: '', hoursTarget: 34.2 },
+  { name: 'Heath, Charlie', firstName: 'Charlie', role: 'Associate', daysOff: [], notes: 'Open availability, very flexible.', schedNotes: '', hoursTarget: 39.5 },
+  { name: 'Kramer, Dan', firstName: 'Dan', role: 'Keyholder', daysOff: ['Sunday','Wednesday'], notes: 'Opening MOD / Closing MOD.', schedNotes: '', hoursTarget: 35.0 },
+  { name: 'Leahy, Bridget', firstName: 'Bridget', role: 'Associate', daysOff: [], notes: 'Open availability.', schedNotes: '', hoursTarget: 36.0 },
+  { name: 'Lopes, Samuel', firstName: 'Sam', role: 'Associate', daysOff: ['Sunday'], notes: 'Mornings preferred when possible. Wed has therapy in afternoon. AM shift on Sun ok.', schedNotes: '', hoursTarget: 33.0 },
+  { name: 'Lyles, Jacob', firstName: 'Jacob', role: 'Keyholder', daysOff: ['Tuesday','Thursday','Monday'], notes: 'School schedule — prefers 3 days/week max. Available Wed, Fri, Sat regularly.', schedNotes: '', hoursTarget: 21.0 },
+  { name: 'Lyons, Matthew', firstName: 'Matt', role: 'Associate', daysOff: [], notes: 'Prefers mornings. Monday ideal day off but can work Mon AM if needed.', schedNotes: '', hoursTarget: 14.0 },
+  { name: 'Merrill, Dawn', firstName: 'Dawn', role: 'Associate', daysOff: ['Monday','Wednesday','Friday'], notes: 'Available Tue, Thu, Sat, Sun.', schedNotes: '', hoursTarget: null },
+  { name: 'Miller, Garrett', firstName: 'Garrett', role: 'Associate', daysOff: ['Sunday'], notes: 'Prefers some day shifts for family time. Flexible on nights 1-2x/week.', schedNotes: '', hoursTarget: 35.2 },
+  { name: 'Ness, Holly', firstName: 'Holly', role: 'Associate', daysOff: ['Sunday'], notes: 'Housing situation May; Saturdays OK starting June.', schedNotes: '', hoursTarget: 18.8 },
+  { name: 'Phelps, Jack', firstName: 'Jack', role: 'Keyholder', daysOff: [], notes: 'Full availability. Opening MOD Sun–Wed.', schedNotes: '', hoursTarget: null },
+  { name: 'Reagan, Rae', firstName: 'Rae', role: 'Associate', daysOff: [], notes: 'Completely open schedule.', schedNotes: '', hoursTarget: 26.0 },
+  { name: 'Regan, Margaret', firstName: 'Maggie', role: 'Associate', daysOff: [], notes: 'Generally available. Some evening unavailability around Boston Fleet games (advance notice given).', schedNotes: '', hoursTarget: 32.0 },
+  { name: 'Smith, Meghan', firstName: 'Meghan', role: 'Keyholder', daysOff: ['Sunday','Monday','Wednesday'], notes: 'Husband travels Mon-Thu. Prefers at least one Fri/Sat/Sun off. Wed therapy at noon.', schedNotes: '', hoursTarget: null },
+  { name: 'Spear, Daniel', firstName: 'Dan', role: 'Associate', daysOff: ['Sunday','Monday'], notes: 'Days off with wife (same as hers). Available Tue-Sat, prefers AMs.', schedNotes: '', hoursTarget: 33.8 },
+  { name: 'Sylvain, Maddison', firstName: 'Maddi', role: 'Associate', daysOff: [], notes: 'Therapy Tue AM 11-12. Prefers night shifts on Tue, any shift other days.', schedNotes: '', hoursTarget: 33.0 },
+  { name: 'Vasquez, Edward', firstName: 'Eddie', role: 'Associate', daysOff: ['Sunday','Friday'], notes: 'Second job starts 3am Mon-Fri. Available PM only Mon-Sat (not before ~3pm weekdays). Wants to start at 4:30pm.', schedNotes: '', hoursTarget: 6.5 },
+  { name: 'Welsh, Jennifer', firstName: 'Jen', role: 'Associate', daysOff: ['Monday','Tuesday','Wednesday','Thursday','Saturday','Sunday'], notes: 'Teacher — weekends only except when school is out (June+). Kids sports schedule on weekends. Very limited availability.', schedNotes: '', hoursTarget: 5.5 },
+  // GM placeholder
+  { name: "O'Rourke, Bryan", firstName: 'Bryan', role: 'GM', daysOff: ['Sunday','Monday'], notes: "GM — Salaried. MOD Thu/Fri/Sat. Admin days Tue/Wed.", schedNotes: '', hoursTarget: 0 },
+];
+
+// Current week schedule: { 'StaffName-DayIndex': { type, start, end, label, notes } }
+let schedule = {};
+
+  // Template schedule - pre-populated
+  (function() {
+  schedule['Phelps, Jack||Sunday'] = {type:'open',start:'7:00 AM',end:'3:30 PM',label:'MOD Open',notes:''};
+  schedule['Lyles, Jacob||Sunday'] = {type:'close-wed',start:'2:00 PM',end:'10:30 PM',label:'MOD Close',notes:''};
+  schedule['Adames, Nicole||Sunday'] = {type:'open-security',start:'7:30 AM',end:'3:30 PM',label:'Security Open',notes:''};
+  schedule['Camilo, Radhames||Sunday'] = {type:'open-greeter',start:'7:30 AM',end:'3:30 PM',label:'Greeter Open',notes:''};
+  schedule['Heath, Charlie||Sunday'] = {type:'open-security',start:'7:30 AM',end:'3:30 PM',label:'Security Open',notes:''};
+  schedule['Davis, Monique||Sunday'] = {type:'mid-bt',start:'12:00 PM',end:'8:00 PM',label:'Mid',notes:''};
+  schedule['Reagan, Rae||Sunday'] = {type:'mid-bt',start:'12:00 PM',end:'8:00 PM',label:'Mid',notes:''};
+  schedule['Sylvain, Maddison||Sunday'] = {type:'close-late-sw',start:'3:00 PM',end:'11:30 PM',label:'Cashier Close',notes:''};
+  schedule['Leahy, Bridget||Sunday'] = {type:'close-late-sw',start:'3:00 PM',end:'11:30 PM',label:'Security Close',notes:''};
+  schedule['Phelps, Jack||Monday'] = {type:'open',start:'7:00 AM',end:'3:30 PM',label:'MOD Open',notes:''};
+  schedule['Phelps, Jack||Tuesday'] = {type:'open',start:'7:00 AM',end:'3:30 PM',label:'MOD Open',notes:''};
+  schedule['Phelps, Jack||Wednesday'] = {type:'open',start:'7:00 AM',end:'3:30 PM',label:'MOD Open',notes:''};
+  schedule['Adames, Nicole||Monday'] = {type:'open-security',start:'7:30 AM',end:'3:30 PM',label:'Security Open',notes:''};
+  schedule['Demers, Andy||Monday'] = {type:'open-greeter',start:'7:30 AM',end:'3:30 PM',label:'Greeter Open',notes:''};
+  schedule['Lyons, Matthew||Monday'] = {type:'open-security',start:'7:30 AM',end:'3:30 PM',label:'Security Open',notes:''};
+  schedule['Lopes, Samuel||Monday'] = {type:'open-greeter',start:'7:30 AM',end:'3:30 PM',label:'Greeter Open',notes:''};
+  schedule['Miller, Garrett||Monday'] = {type:'mid-bt',start:'12:00 PM',end:'8:00 PM',label:'Mid',notes:''};
+  schedule['Heath, Charlie||Monday'] = {type:'mid-bt',start:'12:00 PM',end:'8:00 PM',label:'Mid',notes:''};
+  schedule['Kramer, Dan||Monday'] = {type:'close-wed',start:'2:00 PM',end:'10:30 PM',label:'MOD Close',notes:''};
+  schedule['Gibbons, Brenna||Monday'] = {type:'close-late-sw',start:'3:00 PM',end:'11:30 PM',label:'Cashier Close',notes:''};
+  schedule['Reagan, Rae||Monday'] = {type:'close-late-sw',start:'3:00 PM',end:'11:30 PM',label:'Security Close',notes:''};
+  schedule['Spear, Daniel||Tuesday'] = {type:'open-security',start:'7:30 AM',end:'3:30 PM',label:'Security Open',notes:''};
+  schedule['Demers, Andy||Tuesday'] = {type:'open-greeter',start:'7:30 AM',end:'3:30 PM',label:'Greeter Open',notes:''};
+  schedule['Merrill, Dawn||Tuesday'] = {type:'open-security',start:'7:30 AM',end:'3:30 PM',label:'Security Open',notes:''};
+  schedule['Smith, Meghan||Tuesday'] = {type:'mid',start:'11:30 AM',end:'8:00 PM',label:'MOD Mid',notes:''};
+  schedule['Ness, Holly||Tuesday'] = {type:'mid-bt',start:'12:00 PM',end:'8:00 PM',label:'Mid',notes:''};
+  schedule['Kramer, Dan||Tuesday'] = {type:'close-wed',start:'2:00 PM',end:'10:30 PM',label:'MOD Close',notes:''};
+  schedule['Sylvain, Maddison||Tuesday'] = {type:'close-late-sw',start:'3:00 PM',end:'11:30 PM',label:'Cashier Close',notes:''};
+  schedule['Davis, Monique||Tuesday'] = {type:'close-late-sw',start:'3:00 PM',end:'11:30 PM',label:'Security Close',notes:''};
+  schedule['Vasquez, Edward||Tuesday'] = {type:'close-wed-security',start:'2:30 PM',end:'10:00 PM',label:'Security Close',notes:''};
+  schedule['Spear, Daniel||Wednesday'] = {type:'open-security',start:'7:30 AM',end:'3:30 PM',label:'Security Open',notes:''};
+  schedule['Lyons, Matthew||Wednesday'] = {type:'open-greeter',start:'7:30 AM',end:'3:30 PM',label:'Greeter Open',notes:''};
+  schedule['Demers, Andy||Wednesday'] = {type:'mid-bt',start:'12:00 PM',end:'8:00 PM',label:'Mid',notes:''};
+  schedule['Miller, Garrett||Wednesday'] = {type:'mid-bt',start:'12:00 PM',end:'8:00 PM',label:'Mid',notes:''};
+  schedule['Ness, Holly||Wednesday'] = {type:'close-late-sw',start:'3:00 PM',end:'11:30 PM',label:'Cashier Close',notes:''};
+  schedule['Lyles, Jacob||Wednesday'] = {type:'close-wed',start:'2:00 PM',end:'10:30 PM',label:'MOD Close',notes:''};
+  schedule['Reagan, Rae||Wednesday'] = {type:'close-wed-security',start:'2:30 PM',end:'10:00 PM',label:'Security Close',notes:''};
+  schedule['Davis, Monique||Wednesday'] = {type:'close-late-sw',start:'3:00 PM',end:'11:30 PM',label:'Security Close',notes:''};
+  schedule['Vasquez, Edward||Wednesday'] = {type:'close-wed-greeter',start:'2:30 PM',end:'10:00 PM',label:'Greeter Close',notes:''};
+  schedule['Spear, Daniel||Thursday'] = {type:'open-security',start:'7:30 AM',end:'3:30 PM',label:'Security Open',notes:''};
+  schedule['Demers, Andy||Thursday'] = {type:'open-greeter',start:'7:30 AM',end:'3:30 PM',label:'Greeter Open',notes:''};
+  schedule['Adames, Nicole||Thursday'] = {type:'open-security',start:'7:30 AM',end:'3:30 PM',label:'Security Open',notes:''};
+  schedule['Lyons, Matthew||Thursday'] = {type:'open-greeter',start:'7:30 AM',end:'3:30 PM',label:'Greeter Open',notes:''};
+  schedule['Smith, Meghan||Thursday'] = {type:'mid',start:'11:30 AM',end:'8:00 PM',label:'MOD Mid',notes:''};
+  schedule['Heath, Charlie||Thursday'] = {type:'mid-bt',start:'12:00 PM',end:'8:00 PM',label:'Mid',notes:''};
+  schedule['Kramer, Dan||Thursday'] = {type:'close-thu',start:'3:00 PM',end:'11:00 PM',label:'MOD Close',notes:''};
+  schedule['Gibbons, Brenna||Thursday'] = {type:'close-late-th',start:'3:30 PM',end:'11:30 PM',label:'Cashier Close',notes:''};
+  schedule['Davis, Monique||Thursday'] = {type:'close-late-th',start:'3:30 PM',end:'11:30 PM',label:'Security Close',notes:''};
+  schedule['Vasquez, Edward||Thursday'] = {type:'close-thu-security',start:'2:30 PM',end:'11:00 PM',label:'Security Close',notes:''};
+  schedule['Lyons, Matthew||Friday'] = {type:'open-security',start:'7:30 AM',end:'3:30 PM',label:'Security Open',notes:''};
+  schedule['Leahy, Bridget||Friday'] = {type:'open-greeter',start:'7:30 AM',end:'3:30 PM',label:'Greeter Open',notes:''};
+  schedule['Smith, Meghan||Friday'] = {type:'open',start:'7:00 AM',end:'3:30 PM',label:'MOD Open',notes:''};
+  schedule['Spear, Daniel||Friday'] = {type:'mid-bt',start:'12:00 PM',end:'8:00 PM',label:'Mid',notes:''};
+  schedule['Demers, Andy||Friday'] = {type:'mid-bt',start:'12:00 PM',end:'8:00 PM',label:'Mid',notes:''};
+  schedule['Lyles, Jacob||Friday'] = {type:'close-thu',start:'3:00 PM',end:'11:00 PM',label:'MOD Close',notes:''};
+  schedule['Kramer, Dan||Friday'] = {type:'close-thu',start:'3:00 PM',end:'11:00 PM',label:'MOD Close',notes:''};
+  schedule['Reagan, Rae||Friday'] = {type:'close-late-th',start:'3:30 PM',end:'11:30 PM',label:'Cashier Close',notes:''};
+  schedule['Camilo, Radhames||Friday'] = {type:'close-late-th',start:'3:30 PM',end:'11:30 PM',label:'Security Close',notes:''};
+  schedule['Welsh, Jennifer||Friday'] = {type:'close-thu-security',start:'2:30 PM',end:'11:00 PM',label:'Security Close',notes:''};
+  schedule['Lyons, Matthew||Saturday'] = {type:'open-security',start:'7:30 AM',end:'3:30 PM',label:'Security Open',notes:''};
+  schedule['Spear, Daniel||Saturday'] = {type:'open-greeter',start:'7:30 AM',end:'3:30 PM',label:'Greeter Open',notes:''};
+  schedule['Camilo, Radhames||Saturday'] = {type:'open-security',start:'7:30 AM',end:'3:30 PM',label:'Security Open',notes:''};
+  schedule['Davis, Monique||Saturday'] = {type:'open-greeter',start:'7:30 AM',end:'3:30 PM',label:'Greeter Open',notes:''};
+  schedule['Ness, Holly||Saturday'] = {type:'open-security',start:'7:30 AM',end:'3:30 PM',label:'Security Open',notes:''};
+  schedule['Smith, Meghan||Saturday'] = {type:'mid',start:'11:30 AM',end:'8:00 PM',label:'MOD Mid',notes:''};
+  schedule['Leahy, Bridget||Saturday'] = {type:'mid-bt',start:'12:00 PM',end:'8:00 PM',label:'Mid',notes:''};
+  schedule['Lyles, Jacob||Saturday'] = {type:'close-thu',start:'3:00 PM',end:'11:00 PM',label:'MOD Close',notes:''};
+  schedule['Kramer, Dan||Saturday'] = {type:'close-thu',start:'3:00 PM',end:'11:00 PM',label:'MOD Close',notes:''};
+  schedule['Miller, Garrett||Saturday'] = {type:'close-late-th',start:'3:30 PM',end:'11:30 PM',label:'Cashier Close',notes:''};
+  schedule['Regan, Margaret||Saturday'] = {type:'close-late-th',start:'3:30 PM',end:'11:30 PM',label:'Security Close',notes:''};
+
+  // Bryan O'Rourke - GM
+  schedule["O'Rourke, Bryan||Tuesday"] = {type:'custom',start:'9:00 AM',end:'5:00 PM',label:'Admin',notes:'Admin day'};
+  schedule["O'Rourke, Bryan||Wednesday"] = {type:'custom',start:'9:00 AM',end:'5:00 PM',label:'Admin',notes:'Admin day'};
+  schedule["O'Rourke, Bryan||Thursday"] = {type:'open',start:'7:00 AM',end:'3:30 PM',label:'MOD Open',notes:''};
+  schedule["O'Rourke, Bryan||Friday"] = {type:'open',start:'7:00 AM',end:'3:30 PM',label:'MOD Open',notes:''};
+  schedule["O'Rourke, Bryan||Saturday"] = {type:'open',start:'7:00 AM',end:'3:30 PM',label:'MOD Open',notes:''};
+  })();
+let currentWeekStart = getMonday(new Date());
+let modalContext = null;
+
+function getMonday(d) {
+  const day = d.getDay();
+  const diff = d.getDate() - day + (day === 0 ? -6 : 1);
+  const m = new Date(d);
+  m.setDate(diff);
+  m.setHours(0,0,0,0);
+  return m;
+}
+
+function addDays(d, n) {
+  const r = new Date(d);
+  r.setDate(r.getDate() + n);
+  return r;
+}
+
+function fmtDate(d) {
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+}
+
+function showPage(id) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
+  document.getElementById('page-' + id).classList.add('active');
+  const tabs = ['schedule','staff','conflicts','hours','io','gantt'];
+  const idx = tabs.indexOf(id);
+  if (idx >= 0) document.querySelectorAll('.nav-tab')[idx].classList.add('active');
+  if (id === 'schedule') renderSchedule();
+  if (id === 'staff') renderStaff();
+  if (id === 'conflicts') renderConflicts();
+  if (id === 'hours') renderHours();
+  if (id === 'avail-form') renderAvailForm();
+}
+
+function changeWeek(delta) {
+  currentWeekStart = addDays(currentWeekStart, delta * 7);
+  renderSchedule();
+}
+
+function getDayDates() {
+  return DAYS.map((d, i) => {
+    const idx = (i + 0) % 7;
+    const date = addDays(currentWeekStart, idx - 1);
+    return date;
+  });
+}
+
+function getWeekDates() {
+  // Sun=0..Sat=6 in our schedule, but currentWeekStart is Monday
+  // We show Mon-Sun
+  return Array.from({length:7}, (_, i) => addDays(currentWeekStart, i - 1));
+}
+
+function getShiftKey(staffName, dayOfWeek) {
+  return staffName + '||' + dayOfWeek;
+}
+
+function renderSchedule() {
+  const filter = (document.getElementById('sched-filter')?.value || '').toLowerCase();
+  const roleFilter = document.getElementById('role-filter')?.value || '';
+
+  // Week dates: Sun Mon Tue Wed Thu Fri Sat
+  const weekDates = DAYS.map((day, i) => {
+    // Find the date for this day in current week
+    // currentWeekStart = Monday
+    const dayOffset = i === 0 ? -1 : i - 1; // Sun = -1, Mon = 0, ... Sat = 5
+    return addDays(currentWeekStart, dayOffset);
+  });
+
+  document.getElementById('week-display').textContent =
+    fmtDate(weekDates[1]) + ' – ' + fmtDate(weekDates[6]) + ', ' + weekDates[1].getFullYear();
+
+  // Build header
+  const head = document.getElementById('sched-head');
+  head.innerHTML = `<tr>
+    <th style="width:150px;">Staff</th>
+    ${DAYS.map((d,i) => `<th class="day-col">${DAY_SHORT[i]}<br><span style="font-size:10px;font-weight:400;color:var(--text3);">${fmtDate(weekDates[i])}</span></th>`).join('')}
+    <th style="width:60px;text-align:right;">Hrs</th>
+  </tr>`;
+
+  // Build body
+  const body = document.getElementById('sched-body');
+  const roleOrder = { GM: 0, Keyholder: 1, Associate: 2 };
+  const filteredStaff = staff.filter(s => {
+    if (filter && !s.name.toLowerCase().includes(filter) && !s.firstName.toLowerCase().includes(filter)) return false;
+    if (roleFilter && s.role !== roleFilter) return false;
+    return true;
+  }).sort((a, b) => (roleOrder[a.role] ?? 3) - (roleOrder[b.role] ?? 3) || a.name.localeCompare(b.name));
+
+  let totalHours = 0;
+  let scheduledCount = 0;
+
+  let lastRole = null;
+  const rowParts = [];
+  filteredStaff.forEach(s => {
+    if (s.role !== lastRole) {
+      lastRole = s.role;
+      const roleLabel = s.role === 'GM' ? 'General Manager' : s.role === 'Keyholder' ? 'Keyholders / MOD' : 'Associates';
+      const roleColor = s.role === 'GM' ? 'var(--accent)' : s.role === 'Keyholder' ? 'var(--amber)' : 'var(--text3)';
+      rowParts.push(`<tr><td colspan="9" style="padding:10px 10px 4px;font-size:10px;font-weight:600;letter-spacing:0.1em;text-transform:uppercase;color:${roleColor};background:var(--bg);border-bottom:1px solid var(--border);">${roleLabel}</td></tr>`);
+    }
+    let staffHrs = 0;
+    const cells = DAYS.map((day, di) => {
+      const key = getShiftKey(s.name, day);
+      const shift = schedule[key];
+      const isOff = s.daysOff.includes(day);
+      let content = '';
+      if (shift) {
+        if (shift.type === 'off') {
+          content = `<span class="shift-pill shift-off">OFF</span>`;
+        } else {
+          const cls = (shift.type === 'open' || shift.type === 'open-bt' || shift.type === 'open-security' || shift.type === 'open-greeter') ? 'shift-open' :
+          (shift.type === 'close-late-sw' || shift.type === 'close-late-th') ? 'shift-late' :
+          (shift.type === 'close-wed' || shift.type === 'close-thu' || shift.type === 'close-wed-bt' || shift.type === 'close-thu-bt' || shift.type === 'close-wed-security' || shift.type === 'close-wed-greeter' || shift.type === 'close-thu-security' || shift.type === 'close-thu-greeter') ? 'shift-close' :
+          shift.label === 'Admin' ? 'shift-admin' : 'shift-mid';
+          const hrs = calcHours(shift);
+          if (hrs > 0) staffHrs += hrs;
+          content = `<span class="shift-pill ${cls}" onclick="openModal('${s.name}','${day}',event)">${shift.label || fmtShiftType(shift.type)} ${hrs > 0 ? hrs.toFixed(1)+'h' : ''}</span>`;
+        }
+      } else if (isOff) {
+        content = `<span style="font-size:10px;color:var(--text3);">pref off</span>`;
+      }
+      const addBtn = `<div class="add-shift-btn" onclick="openModal('${s.name}','${day}',event)">+</div>`;
+      return `<td class="day-cell">${content}${shift ? '' : addBtn}</td>`;
+    }).join('');
+
+    if (s.role !== 'GM') totalHours += staffHrs;
+    if (staffHrs > 0) scheduledCount++;
+
+    const roleTag = s.role === 'Keyholder' ? '<span class="role-kh">KH</span>' : s.role === 'GM' ? '<span class="role-mod">GM</span>' : '';
+    rowParts.push(`<tr>
+      <td class="staff-name">${s.firstName} ${s.name.split(',')[0]}${roleTag}</td>
+      ${cells}
+      <td style="text-align:right;font-size:11px;color:var(--text2);">${staffHrs > 0 ? staffHrs.toFixed(1) : ''}</td>
+    </tr>`);
+  });
+  body.innerHTML = rowParts.join('');
+
+  // Stats
+  renderSchedStats(totalHours, scheduledCount);
+  renderAllotment(totalHours);
+}
+
+function calcHours(shift) {
+  const times = {
+    open: 8.0, 'open-bt': 7.5, mid: 8.0, 'mid-bt': 7.5,
+    'close-wed': 8.0, 'close-wed-bt': 7.0, 'close-wed-security': 7.0, 'close-wed-greeter': 7.0, 'close-thu': 7.5, 'close-thu-bt': 8.0, 'close-thu-security': 8.0, 'close-thu-greeter': 8.0, 'close-late-sw': 8.0, 'close-late-th': 7.5, 'open-security': 7.5, 'open-greeter': 7.5, custom: 0
+  };
+  if (shift.type === 'custom' && shift.start && shift.end) {
+    // Parse time difference
+    try {
+      const parse = t => {
+        const [hm, ampm] = t.split(' ');
+        let [h, m] = hm.split(':').map(Number);
+        if (ampm === 'PM' && h !== 12) h += 12;
+        if (ampm === 'AM' && h === 12) h = 0;
+        return h + m / 60;
+      };
+      return Math.max(0, parse(shift.end) - parse(shift.start) - 0.5);
+    } catch(e) { return 0; }
+  }
+  return times[shift.type] || 0;
+}
+
+function fmtShiftType(type) {
+  return { open:'MOD Open', 'open-bt':'Opening', 'open-security':'Security Open', 'open-greeter':'Greeter Open', mid:'MOD Mid', 'mid-bt':'Mid', 'close-wed':'MOD Close', 'close-wed-bt':'Closing', 'close-wed-security':'Security Close', 'close-wed-greeter':'Greeter Close', 'close-thu':'MOD Close', 'close-thu-bt':'Closing', 'close-thu-security':'Security Close', 'close-thu-greeter':'Greeter Close', 'close-late-sw':'Cashier Close', 'close-late-th':'Cashier Close', custom:'Custom', off:'OFF' }[type] || type;
+}
+
+function renderSchedStats(totalHrs, scheduled) {
+  const target = 588.75;
+  const pct = Math.round((totalHrs / target) * 100);
+  document.getElementById('sched-stats').innerHTML = `
+    <div class="stat-card">
+      <div class="stat-label">Total Hours</div>
+      <div class="stat-val text-accent">${totalHrs.toFixed(1)}</div>
+      <div class="stat-sub">Prior week: ${staff.filter(s=>s.role!=='GM'&&s.hoursTarget!==null).reduce((a,s)=>a+s.hoursTarget,0).toFixed(1)}h</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">vs Allotment</div>
+      <div class="stat-val ${totalHrs > target ? 'text-red' : 'text-green'}">${totalHrs > target ? '+' : ''}${(totalHrs - target).toFixed(1)}</div>
+      <div class="stat-sub">${pct}% filled</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Staff Scheduled</div>
+      <div class="stat-val">${scheduled}</div>
+      <div class="stat-sub">of ${staff.length - 1} active</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Extended Hours</div>
+      <div class="stat-val text-green">Active</div>
+      <div class="stat-sub">Sun–Wed 8a–10p · Thu–Sat 8a–11p</div>
+    </div>
+  `;
+}
+
+function renderAllotment(totalHrs) {
+  const target = 588.75;
+  const rows = [
+    { label: 'Sun–Wed (8a–10p)', hrs: totalHrs * 0.45, target: 260 },
+    { label: 'Thu–Sat (8a–11p)', hrs: totalHrs * 0.55, target: 328.75 },
+    { label: 'Opening shifts', hrs: totalHrs * 0.35, target: 200 },
+    { label: 'Closing shifts', hrs: totalHrs * 0.45, target: 260 },
+    { label: 'Mid shifts', hrs: totalHrs * 0.2, target: 128 },
+  ];
+  document.getElementById('allotment-rows').innerHTML = rows.map(r => {
+    const pct = Math.min(100, (r.hrs / r.target) * 100);
+    const over = r.hrs > r.target;
+    return `<div class="allotment-row">
+      <span class="allotment-label">${r.label}</span>
+      <div class="allotment-bar-wrap">
+        <div class="allotment-bar-fill ${over ? 'hours-over' : ''}" style="width:${pct.toFixed(0)}%;background:${over ? 'var(--red)' : 'var(--accent)'}"></div>
+      </div>
+      <span class="allotment-count ${over ? 'text-red' : ''}">${r.hrs.toFixed(0)}h</span>
+      <span class="allotment-target">/ ${r.target}h</span>
+    </div>`;
+  }).join('');
+}
+
+// Staff rendering
+function avatarColor(role) {
+  if (role === 'Keyholder') return 'rgba(233,162,59,0.2)';
+  if (role === 'GM') return 'rgba(124,106,240,0.2)';
+  return 'rgba(63,184,122,0.15)';
+}
+function avatarText(role) {
+  if (role === 'Keyholder') return 'var(--amber)';
+  if (role === 'GM') return 'var(--accent)';
+  return 'var(--green)';
+}
+
+function renderStaff() {
+  const activeStaff = staff.filter(s => s.name !== 'GM (TBD)');
+  document.getElementById('staff-count-badge').textContent = activeStaff.length + ' staff';
+  document.getElementById('staff-grid').innerHTML = activeStaff.map(s => {
+    const initials = s.firstName[0] + (s.name.split(',')[0][0] || '');
+    const dayChips = DAYS.map(d => {
+      const isOff = s.daysOff.includes(d);
+      return `<span class="day-chip ${isOff ? 'day-unavail' : 'day-avail'}">${d.slice(0,2)}</span>`;
+    }).join('');
+    const notes = s.notes ? `<div class="staff-notes-card">${s.notes}</div>` : '';
+    return `<div class="staff-card">
+      <div class="staff-card-header">
+        <div style="display:flex;align-items:center;gap:10px;flex:1;">
+          <div class="staff-avatar" style="background:${avatarColor(s.role)};color:${avatarText(s.role)}">${initials.toUpperCase()}</div>
+          <div class="staff-info">
+            <div class="staff-name-card">${s.firstName} ${s.name.split(',')[0]}</div>
+            <div class="staff-role-card">${s.role} · ${s.hoursTarget || '—'}h/wk target</div>
+          </div>
+        </div>
+        <button class="btn btn-sm" onclick="editStaffAvail('${s.name}')">Edit</button>
+      </div>
+      <div class="avail-days">${dayChips}</div>
+      ${notes}
+    </div>`;
+  }).join('');
+}
+
+// Conflicts
+function renderConflicts() {
+  const conflicts = [];
+
+  // Check each scheduled shift against staff availability
+  Object.entries(schedule).forEach(([key, shift]) => {
+    if (shift.type === 'off') return;
+    const [staffName, day] = key.split('||');
+    const member = staff.find(s => s.name === staffName);
+    if (!member) return;
+    if (member.daysOff.includes(day)) {
+      conflicts.push({
+        type: 'avail',
+        title: `Availability conflict: ${member.firstName} ${member.name.split(',')[0].trim()}`,
+        desc: `${member.firstName} ${member.name.split(',')[0].trim()} requested ${day} off but has a ${shift.type} shift scheduled.`
+      });
+    }
+  });
+
+  // Check hours
+  staff.forEach(s => {
+    if (s.role === 'GM') return;
+    let hrs = 0;
+    DAYS.forEach(day => {
+      const shift = schedule[getShiftKey(s.name, day)];
+      if (shift && shift.type !== 'off') hrs += calcHours(shift);
+    });
+    // Adames has a hard medical cap of 25h — flag if over
+    if (s.name === 'Adames, Nicole' && hrs > 25) {
+      conflicts.push({ type: 'hours', title: `Over medical cap: ${s.firstName} ${s.name.split(',')[0].trim()}`, desc: `Nicole Adames has a 25h/week medical restriction. Currently scheduled ${hrs.toFixed(1)}h (${(hrs - 25).toFixed(1)}h over cap).` });
+    }
+    // For everyone else: flag if new schedule is 10+ hours more than their prior week
+    if (s.name !== 'Adames, Nicole' && s.hoursTarget !== null && s.hoursTarget > 0 && hrs > s.hoursTarget + 10) {
+      conflicts.push({ type: 'hours', title: `Large increase vs prior week: ${s.firstName} ${s.name.split(',')[0].trim()}`, desc: `${s.firstName} ${s.name.split(',')[0].trim()} was scheduled ${s.hoursTarget}h last week. New template has them at ${hrs.toFixed(1)}h (+${(hrs - s.hoursTarget).toFixed(1)}h). Confirm they want the extra hours.` });
+    }
+    // Flag large reductions too — staff who expected more hours
+    if (s.hoursTarget !== null && s.hoursTarget > 0 && hrs > 0 && hrs < s.hoursTarget - 10) {
+      conflicts.push({ type: 'hours-under', title: `Large reduction vs prior week: ${s.firstName} ${s.name.split(',')[0].trim()}`, desc: `${s.firstName} ${s.name.split(',')[0].trim()} was scheduled ${s.hoursTarget}h last week. New template has them at ${hrs.toFixed(1)}h (${(hrs - s.hoursTarget).toFixed(1)}h). May need to discuss expectations.` });
+    }
+  });
+
+  // Check MOD coverage per day
+  DAYS.forEach(day => {
+    const keyholders = staff.filter(s => s.role === 'Keyholder' || s.role === 'GM');
+    const scheduledMODs = keyholders.filter(s => {
+      const shift = schedule[getShiftKey(s.name, day)];
+      return shift && shift.type !== 'off';
+    });
+    if (scheduledMODs.length === 0) {
+      conflicts.push({ type: 'info', title: `No MOD coverage: ${day}`, desc: `No Keyholder is scheduled on ${day}. At least one MOD is required per shift.` });
+    }
+  });
+
+  if (conflicts.length === 0) {
+    document.getElementById('conflict-list').innerHTML = `<div class="conflict-item"><div class="conflict-icon conflict-info" style="background:rgba(63,184,122,0.15);">✓</div><div><div class="conflict-title text-green">No conflicts detected</div><div class="conflict-desc">All scheduled shifts are within availability and hour targets for the current week.</div></div></div>`;
+    return;
+  }
+
+  document.getElementById('conflict-list').innerHTML = conflicts.map(c => {
+    const iconBg = c.type === 'avail' ? 'rgba(229,90,90,0.15)' : c.type === 'info' ? 'rgba(74,159,232,0.15)' : 'rgba(233,162,59,0.15)';
+    const icon = c.type === 'avail' ? '!' : c.type === 'info' ? 'i' : '↑';
+    return `<div class="conflict-item">
+      <div class="conflict-icon" style="background:${iconBg};color:${c.type==='avail'?'var(--red)':c.type==='info'?'var(--blue)':'var(--amber)'};">${icon}</div>
+      <div>
+        <div class="conflict-title">${c.title}</div>
+        <div class="conflict-desc">${c.desc}</div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+// Hours summary
+function renderHours() {
+  const roleOrder = { GM: 0, Keyholder: 1, Associate: 2 };
+  const target = 588.75;
+  let total = 0;
+  const rows = staff.filter(s => s.role !== 'GM').sort((a,b) => (roleOrder[a.role]??3)-(roleOrder[b.role]??3)||a.name.localeCompare(b.name)).map(s => {
+    let hrs = 0;
+    DAYS.forEach(day => {
+      const shift = schedule[getShiftKey(s.name, day)];
+      if (shift && shift.type !== 'off') hrs += calcHours(shift);
+    });
+    total += hrs;
+    const t = s.hoursTarget || null;
+    const variance = t !== null ? hrs - t : 0;
+    const barPct = t !== null ? Math.min(100, (hrs / (t + 4)) * 100) : Math.min(100, (hrs / 40) * 100);
+    const barCls = t !== null && hrs > t + 2 ? 'hours-over' : t !== null && hrs < t - 4 && hrs > 0 ? 'hours-under' : '';
+    return `<tr>
+      <td style="font-weight:500;">${s.firstName} ${s.name.split(',')[0]}</td>
+      <td><span class="badge ${s.role==='Keyholder'?'badge-amber':'badge-green'}">${s.role}</span></td>
+      <td class="${hrs > t+2 ? 'text-red' : hrs < t-4 && hrs > 0 ? 'text-amber' : ''}">${hrs.toFixed(1)}</td>
+      <td style="color:var(--text3);">${t !== null ? t : '—'}</td>
+      <td class="${t !== null && variance > 2 ? 'text-red' : t !== null && variance < -4 && hrs > 0 ? 'text-amber' : t !== null ? 'text-green' : ''}">${t !== null ? (variance > 0 ? '+' : '') + variance.toFixed(1) : '—'}</td>
+      <td><div class="hours-bar-wrap"><div class="hours-bar ${barCls}" style="width:${barPct.toFixed(0)}%"></div></div></td>
+    </tr>`;
+  });
+
+  document.getElementById('total-hours-badge').textContent = `New: ${total.toFixed(1)}h vs Prior: ${staff.filter(s=>s.role!=='GM'&&s.hoursTarget!==null).reduce((a,s)=>a+s.hoursTarget,0).toFixed(1)}h`;
+  document.getElementById('hours-body').innerHTML = rows.join('');
+}
+
+// Modal
+function openModal(staffName, day, evt) {
+  evt && evt.stopPropagation();
+  const key = getShiftKey(staffName, day);
+  const existing = schedule[key];
+  modalContext = { staffName, day, key };
+  document.getElementById('modal-title').textContent = `${staffName.split(',')[0]} — ${day}`;
+  document.getElementById('modal-type').value = existing?.type || 'open';
+  document.getElementById('modal-label').value = existing?.label || '';
+  document.getElementById('modal-notes').value = existing?.notes || '';
+  document.getElementById('modal-start').value = existing?.start || '';
+  document.getElementById('modal-end').value = existing?.end || '';
+  toggleCustomTimes();
+  document.getElementById('shift-modal').classList.add('open');
+}
+
+function closeModal() {
+  document.getElementById('shift-modal').classList.remove('open');
+  modalContext = null;
+}
+
+document.getElementById('modal-type').addEventListener('change', toggleCustomTimes);
+
+function toggleCustomTimes() {
+  const v = document.getElementById('modal-type').value;
+  document.getElementById('modal-custom-times').style.display = v === 'custom' ? '' : 'none';
+}
+
+function saveShift() {
+  if (!modalContext) return;
+  const type = document.getElementById('modal-type').value;
+  if (type === 'off') {
+    delete schedule[modalContext.key];
+  } else {
+    const shiftTimes = {
+      open: { start: '7:00 AM', end: '3:30 PM' },
+      'open-bt': { start: '7:30 AM', end: '3:30 PM' },
+      mid: { start: '11:30 AM', end: '8:00 PM' },
+      'mid-bt': { start: '12:00 PM', end: '8:00 PM' },
+      'close-wed': { start: '2:00 PM', end: '10:30 PM' },
+      'close-wed-bt': { start: '2:30 PM', end: '10:00 PM' },
+      'close-thu': { start: '3:00 PM', end: '11:00 PM' },
+      'close-thu-bt': { start: '2:30 PM', end: '11:00 PM' },
+      'open-security': { start: '7:30 AM', end: '3:30 PM' },
+      'open-greeter': { start: '7:30 AM', end: '3:30 PM' },
+      'close-wed-security': { start: '2:30 PM', end: '10:00 PM' },
+      'close-wed-greeter': { start: '2:30 PM', end: '10:00 PM' },
+      'close-thu-security': { start: '2:30 PM', end: '11:00 PM' },
+      'close-thu-greeter': { start: '2:30 PM', end: '11:00 PM' },
+      'close-late-sw': { start: '3:00 PM', end: '11:30 PM' },
+      'close-late-th': { start: '3:30 PM', end: '11:30 PM' },
+    };
+    const times = shiftTimes[type] || { start: document.getElementById('modal-start').value, end: document.getElementById('modal-end').value };
+    schedule[modalContext.key] = {
+      type,
+      start: times.start,
+      end: times.end,
+      label: document.getElementById('modal-label').value || fmtShiftType(type),
+      notes: document.getElementById('modal-notes').value,
+    };
+  }
+  closeModal();
+  renderSchedule();
+}
+
+// Availability form
+function renderAvailForm() {
+  const sel = document.getElementById('avail-staff-select');
+  sel.innerHTML = '<option value="">Select...</option>' +
+    staff.filter(s => s.name !== 'GM (TBD)').map(s =>
+      `<option value="${s.name}">${s.firstName} ${s.name.split(',')[0]}</option>`
+    ).join('');
+
+  document.querySelectorAll('.day-toggle').forEach(el => {
+    el.classList.remove('off');
+    el.addEventListener('click', () => el.classList.toggle('off'));
+  });
+
+  sel.addEventListener('change', () => {
+    const s = staff.find(m => m.name === sel.value);
+    if (!s) return;
+    document.getElementById('avail-role-select').value = s.role;
+    document.getElementById('avail-notes').value = s.notes;
+    document.querySelectorAll('.day-toggle').forEach(el => {
+      el.classList.toggle('off', s.daysOff.includes(el.dataset.day));
+    });
+  });
+}
+
+function editStaffAvail(name) {
+  showPage('avail-form');
+  setTimeout(() => {
+    const sel = document.getElementById('avail-staff-select');
+    sel.value = name;
+    sel.dispatchEvent(new Event('change'));
+  }, 100);
+}
+
+function saveAvailability() {
+  const name = document.getElementById('avail-staff-select').value;
+  if (!name) { alert('Please select a staff member.'); return; }
+  const s = staff.find(m => m.name === name);
+  if (!s) return;
+  s.role = document.getElementById('avail-role-select').value;
+  s.notes = document.getElementById('avail-notes').value;
+  s.daysOff = Array.from(document.querySelectorAll('.day-toggle.off')).map(el => el.dataset.day);
+  showPage('staff');
+  alert('Availability updated for ' + s.firstName + '!');
+}
+
+// Export/Import
+function generateShiftsCSV() {
+  const rows = [['Member','Work Email','Group','Start Date','Start Time','End Date','End Time','Theme Color','Custom Label','Unpaid Break (minutes)','Notes','Shared']];
+
+  // Fake week for CSV (use current week)
+  const weekDates = DAYS.map((day, i) => {
+    const dayOffset = i === 0 ? -1 : i - 1;
+    return addDays(currentWeekStart, dayOffset);
+  });
+
+  Object.entries(schedule).forEach(([key, shift]) => {
+    if (shift.type === 'off') return;
+    const [staffName, day] = key.split('||');
+    const member = staff.find(s => s.name === staffName);
+    if (!member) return;
+    const dayIdx = DAYS.indexOf(day);
+    const date = weekDates[dayIdx];
+    const dateStr = (date.getMonth()+1) + '/' + date.getDate() + '/' + date.getFullYear();
+    const colorMap = { Keyholder: '6. Yellow', GM: '3. Green', Associate: '12. DarkYellow' };
+    rows.push([
+      `${member.firstName} ${member.name.split(',')[0]}`,
+      '',
+      'Dracut Full Team',
+      dateStr,
+      shift.start,
+      dateStr,
+      shift.end,
+      colorMap[member.role] || '12. DarkYellow',
+      shift.label || '',
+      30,
+      shift.notes || '',
+      '1. Shared'
+    ]);
+  });
+
+  const csv = rows.map(r => r.map(c => `"${String(c).replace(/"/g,'""')}"`).join(',')).join('\n');
+  document.getElementById('shifts-csv-out').value = csv;
+}
+
+function copyCSV() {
+  const ta = document.getElementById('shifts-csv-out');
+  ta.select();
+  document.execCommand('copy');
+  alert('Copied!');
+}
+
+function downloadCSV() {
+  const csv = document.getElementById('shifts-csv-out').value;
+  if (!csv) { generateShiftsCSV(); }
+  const blob = new Blob([document.getElementById('shifts-csv-out').value], { type: 'text/csv' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'dracut_schedule_' + new Date().toISOString().slice(0,10) + '.csv';
+  a.click();
+}
+
+function exportJSON() {
+  const data = { schedule, staff: staff.map(s => ({ ...s })), weekStart: currentWeekStart.toISOString() };
+  document.getElementById('json-out').value = JSON.stringify(data, null, 2);
+}
+
+function downloadJSON() {
+  exportJSON();
+  const blob = new Blob([document.getElementById('json-out').value], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'dracut_schedule_' + new Date().toISOString().slice(0,10) + '.json';
+  a.click();
+}
+
+function importJSON() {
+  try {
+    const data = JSON.parse(document.getElementById('json-in').value);
+    if (data.schedule) schedule = data.schedule;
+    if (data.staff) staff = data.staff;
+    if (data.weekStart) currentWeekStart = new Date(data.weekStart);
+    showPage('schedule');
+    alert('Schedule imported successfully.');
+  } catch(e) {
+    alert('Invalid JSON: ' + e.message);
+  }
+}
+
+function exportSchedule() {
+  showPage('io');
+  generateShiftsCSV();
+}
+
+
+// ---- GANTT ----
+let ganttDay = 'Monday';
+
+function renderGantt() {
+  // Day tabs
+  const tabsEl = document.getElementById('gantt-day-tabs');
+  tabsEl.innerHTML = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'].map(d =>
+    `<div class="gantt-day-tab${d === ganttDay ? ' active' : ''}" onclick="ganttDay='${d}';renderGantt()">${d.slice(0,3).toUpperCase()}</div>`
+  ).join('');
+
+  const isThSat = ['Thursday','Friday','Saturday'].includes(ganttDay);
+  const storeOpen = 7;   // 7:00 AM
+  const storeClose = isThSat ? 24 : 23; // midnight / 11pm + 30min cleanup = up to 00:00 / 23:30
+  const dayStart = 7;    // Gantt starts at 7am
+  const dayEnd = 24;     // Gantt ends at midnight
+  const totalMins = (dayEnd - dayStart) * 60; // 1020 mins
+
+  // Time to % position
+  const parseTime = t => {
+    if (!t) return null;
+    const [hm, ap] = t.split(' ');
+    let [h, m] = hm.split(':').map(Number);
+    if (ap === 'PM' && h !== 12) h += 12;
+    if (ap === 'AM' && h === 12) h = 0;
+    return h + m / 60;
+  };
+  const toX = h => Math.max(0, Math.min(100, ((h - dayStart) / (dayEnd - dayStart)) * 100));
+
+  // Bar color by label
+  const barColor = label => {
+    if (!label) return '#555';
+    if (label.includes('MOD')) return '#7c6af0';
+    if (label.includes('Security')) return '#3fb87a';
+    if (label.includes('Greeter')) return '#4a9fe8';
+    if (label.includes('Cashier')) return '#dc50b4';
+    if (label === 'Admin') return '#2db89a';
+    if (label.includes('Mid')) return '#e9a23b';
+    return '#7c6af0';
+  };
+
+  // Hour markers: 7am to midnight
+  const hours = [];
+  for (let h = dayStart; h <= dayEnd; h++) {
+    const label = h === 0 || h === 24 ? '12am' : h < 12 ? `${h}am` : h === 12 ? '12pm' : `${h-12}pm`;
+    hours.push({ h, label });
+  }
+
+  // Build header row
+  const roleOrder = { GM: 0, Keyholder: 1, Associate: 2 };
+  const dayStaff = staff
+    .filter(s => schedule[s.name + '||' + ganttDay])
+    .sort((a,b) => (roleOrder[a.role]??3) - (roleOrder[b.role]??3) || a.name.localeCompare(b.name));
+
+  let html = '<thead><tr>';
+  html += '<th class="g-name-header">STAFF</th>';
+  hours.forEach((h, i) => {
+    const isStoreOpen = h.h >= 7 && h.h < (isThSat ? 23.5 : 22.5);
+    html += `<th class="g-hour-header" style="width:${100/(hours.length)}%;${i === 0 ? '' : ''}">${h.label}</th>`;
+  });
+  html += '</tr></thead>';
+
+  // Store hours shading row
+  html += '<tbody>';
+
+  let lastRole = null;
+  dayStaff.forEach(s => {
+    // Role group header
+    if (s.role !== lastRole) {
+      lastRole = s.role;
+      const roleLabel = s.role === 'GM' ? 'General Manager' : s.role === 'Keyholder' ? 'Keyholders / MOD' : 'Associates';
+      const roleColor = s.role === 'GM' ? 'var(--accent)' : s.role === 'Keyholder' ? 'var(--amber)' : 'var(--text3)';
+      html += `<tr class="gantt-role-header"><td class="g-name" style="color:${roleColor};font-size:9px;letter-spacing:0.08em;text-transform:uppercase;">${roleLabel}</td>`;
+      // Render store hours band across all hour columns
+      hours.forEach((h, i) => {
+        const isOpen = h.h >= 8 && h.h < (isThSat ? 23 : 22);
+        html += `<td class="g-cell${isOpen ? ' g-store-hour' : ''}"></td>`;
+      });
+      html += '</tr>';
+    }
+
+    const shift = schedule[s.name + '||' + ganttDay];
+    const startH = parseTime(shift.start);
+    const endH = parseTime(shift.end);
+    const left = toX(startH);
+    const width = toX(endH) - left;
+    const color = barColor(shift.label);
+    const shortLabel = shift.label || '';
+
+    html += `<tr>`;
+    html += `<td class="g-name" style="color:var(--text2);">${s.firstName} ${s.name.split(',')[0]}</td>`;
+
+    // Single spanning cell with absolute-positioned bar
+    html += `<td class="g-cell" colspan="${hours.length}" style="position:relative;">`;
+    // Store open shading
+    const storeOpenLeft = toX(8);
+    const storeOpenWidth = toX(isThSat ? 23 : 22) - storeOpenLeft;
+    html += `<div style="position:absolute;top:0;bottom:0;left:${storeOpenLeft}%;width:${storeOpenWidth}%;background:rgba(124,106,240,0.04);pointer-events:none;"></div>`;
+    // Shift bar
+    html += `<div class="gantt-bar" style="left:${left}%;width:${width}%;background:${color};color:#fff;opacity:0.92;" title="${s.firstName} ${s.name.split(',')[0]}: ${shift.label} ${shift.start}–${shift.end}">${shortLabel}</div>`;
+    html += `</td>`;
+    html += `</tr>`;
+  });
+
+  html += '</tbody>';
+  document.getElementById('gantt-table').innerHTML = html;
+
+  // Summary
+  const totalStaff = dayStaff.length;
+  const shiftHrs = { HRS: {} };
+  let dayTotal = 0;
+  const calcH = s => {
+    const sh = schedule[s.name + '||' + ganttDay];
+    if (!sh) return 0;
+    const HRS_MAP = { open:8,'open-bt':7.5,'open-security':7.5,'open-greeter':7.5,mid:8,'mid-bt':7.5,'close-wed':8,'close-wed-security':7,'close-wed-greeter':7,'close-thu':7.5,'close-thu-security':8,'close-thu-greeter':8,'close-late-sw':8,'close-late-th':7.5,custom:7.5 };
+    return HRS_MAP[sh.type] || 0;
+  };
+  dayStaff.forEach(s => dayTotal += calcH(s));
+
+  const openers = dayStaff.filter(s => schedule[s.name+'||'+ganttDay]?.type?.includes('open')).length;
+  const closers = dayStaff.filter(s => { const t = schedule[s.name+'||'+ganttDay]?.type; return t?.includes('close') || t?.includes('late'); }).length;
+  const mids = dayStaff.filter(s => schedule[s.name+'||'+ganttDay]?.type?.includes('mid')).length;
+
+  document.getElementById('gantt-summary').innerHTML =
+    `<span>${totalStaff} staff · ${dayTotal.toFixed(1)}h total</span>` +
+    `<span style="color:var(--accent);">${openers} opening</span>` +
+    `<span style="color:var(--amber);">${mids} mid</span>` +
+    `<span style="color:var(--red);">${closers} closing</span>`;
+}
+
+// Init
+renderSchedule();
+</script>
+</body>
+</html>
