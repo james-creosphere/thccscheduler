@@ -341,7 +341,10 @@
   <div class="section-header">
     <span class="section-title">Daily Gantt View</span>
     <div style="display:flex;gap:8px;align-items:center;">
-      <span style="font-size:11px;color:var(--text3);">Grouped by role · Time axis 7am – midnight</span>
+      <button class="btn btn-sm" onclick="ganttStepDate(-1)">&#8592;</button>
+      <input type="date" id="gantt-date-picker" style="background:var(--surface);border:1px solid var(--border2);border-radius:6px;padding:4px 10px;font-size:12px;font-family:var(--sans);color:var(--text);cursor:pointer;" onchange="ganttPickDate(this.value)">
+      <button class="btn btn-sm" onclick="ganttStepDate(1)">&#8594;</button>
+      <span style="font-size:11px;color:var(--text3);margin-left:4px;" id="gantt-day-label"></span>
     </div>
   </div>
   <div class="gantt-wrapper">
@@ -1154,12 +1157,45 @@ function exportSchedule() {
 
 // ---- GANTT ----
 let ganttDay = 'Monday';
+let ganttDate = null; // tracks the actual selected date
+
+function ganttPickDate(val) {
+  ganttDate = new Date(val + 'T12:00:00'); // noon to avoid timezone offset issues
+  ganttDay = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'][ganttDate.getDay()];
+  renderGantt();
+}
+
+function ganttStepDate(delta) {
+  if (!ganttDate) {
+    ganttDate = new Date();
+  }
+  ganttDate.setDate(ganttDate.getDate() + delta);
+  ganttDay = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'][ganttDate.getDay()];
+  const iso = ganttDate.toISOString().slice(0,10);
+  document.getElementById('gantt-date-picker').value = iso;
+  renderGantt();
+}
 
 function renderGantt() {
-  // Day tabs
+  // Init date picker to today if first load
+  const picker = document.getElementById('gantt-date-picker');
+  if (!picker.value) {
+    const today = new Date();
+    ganttDate = today;
+    ganttDay = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'][today.getDay()];
+    picker.value = today.toISOString().slice(0,10);
+  }
+
+  // Update day label
+  const label = document.getElementById('gantt-day-label');
+  if (ganttDate) {
+    label.textContent = ganttDate.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric', year: 'numeric' });
+  }
+
+  // Day tabs — keep as quick-jump within the week
   const tabsEl = document.getElementById('gantt-day-tabs');
   tabsEl.innerHTML = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'].map(d =>
-    `<div class="gantt-day-tab${d === ganttDay ? ' active' : ''}" onclick="ganttDay='${d}';renderGantt()">${d.slice(0,3).toUpperCase()}</div>`
+    `<div class="gantt-day-tab${d === ganttDay ? ' active' : ''}" onclick="ganttDay='${d}';ganttDate=null;document.getElementById('gantt-date-picker').value='';document.getElementById('gantt-day-label').textContent='${d} (template)';renderGantt()">${d.slice(0,3).toUpperCase()}</div>`
   ).join('');
 
   const isThSat = ['Thursday','Friday','Saturday'].includes(ganttDay);
