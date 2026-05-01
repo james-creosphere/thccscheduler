@@ -682,32 +682,7 @@ function renderSchedule() {
     if (filter && !s.name.toLowerCase().includes(filter) && !s.firstName.toLowerCase().includes(filter)) return false;
     if (roleFilter && s.role !== roleFilter) return false;
     return true;
-  }).sort((a, b) => {
-    const shiftGroup = label => {
-      if (!label) return 99;
-      if (label.includes('Open')) return 0;
-      if (label.includes('Mid')) return 1;
-      if (label.includes('Close')) return 2;
-      if (label === 'Admin') return 3;
-      return 4;
-    };
-    const shiftOrder = label => {
-      const order = { 'MOD Open':0,'Security Open':1,'Greeter Open':2,'MOD Mid':3,'Mid':4,'MOD Close':5,'Security Close':6,'Greeter Close':7,'Cashier Close':8,'Admin':9 };
-      return order[label] ?? 99;
-    };
-    // Use first scheduled day's label to determine group
-    const dominantLabel = s => {
-      for (const d of DAYS) { const sh = schedule[s.name+'||'+d]; if (sh) return sh.label || ''; }
-      return '';
-    };
-    const aShift = dominantLabel(a);
-    const bShift = dominantLabel(b);
-    // Unscheduled staff go to bottom
-    const aSchd = schedule[a.name + '||' + currentDay] ? 0 : 1;
-    const bSchd = schedule[b.name + '||' + currentDay] ? 0 : 1;
-    if (aSchd !== bSchd) return aSchd - bSchd;
-    return shiftOrder(aShift) - shiftOrder(bShift) || a.name.localeCompare(b.name);
-  });
+  }).sort((a, b) => (roleOrder[a.role] ?? 3) - (roleOrder[b.role] ?? 3) || a.name.localeCompare(b.name));
 
   let totalHours = 0;
   let scheduledCount = 0;
@@ -715,35 +690,11 @@ function renderSchedule() {
   let lastRole = null;
   const rowParts = [];
   filteredStaff.forEach(s => {
-    const shiftGroupKey = s => {
-      const labels = DAYS.map(d => schedule[s.name+'||'+d]?.label || '');
-      if (labels.some(l => l.includes('Open'))) return labels.find(l => l.includes('Open')) || 'Opening';
-      if (labels.some(l => l.includes('Mid'))) return labels.find(l => l.includes('Mid')) || 'Mid';
-      if (labels.some(l => l.includes('Close'))) return labels.find(l => l.includes('Close')) || 'Closing';
-      if (labels.some(l => l === 'Admin')) return 'Admin';
-      return 'Unscheduled';
-    };
-    const shiftGroupLabel = key => {
-      if (key.includes('Open')) return '— Opening Shifts';
-      if (key.includes('Mid')) return '— Mid Shifts';
-      if (key.includes('Close')) return '— Closing Shifts';
-      if (key === 'Admin') return '— Admin';
-      return '— Unscheduled';
-    };
-    const shiftGroupColor = key => {
-      if (key.includes('MOD')) return 'var(--accent)';
-      if (key.includes('Security')) return 'var(--green)';
-      if (key.includes('Greeter')) return 'var(--blue)';
-      if (key.includes('Mid')) return 'var(--amber)';
-      if (key.includes('Close')) return '#dc50b4';
-      return 'var(--text3)';
-    };
-    const sGroupKey = shiftGroupKey(s);
-    const sGroupLabel = shiftGroupLabel(sGroupKey);
-    if (sGroupLabel !== lastRole) {
-      lastRole = sGroupLabel;
-      const roleColor = shiftGroupColor(sGroupKey);
-      rowParts.push(`<tr><td colspan="9" style="padding:10px 10px 4px;font-size:10px;font-weight:600;letter-spacing:0.1em;text-transform:uppercase;color:${roleColor};background:var(--bg);border-bottom:1px solid var(--border);">${sGroupLabel}</td></tr>`);
+    if (s.role !== lastRole) {
+      lastRole = s.role;
+      const roleLabel = s.role === 'GM' ? 'General Manager' : s.role === 'Keyholder' ? 'Keyholders / MOD' : 'Associates';
+      const roleColor = s.role === 'GM' ? 'var(--accent)' : s.role === 'Keyholder' ? 'var(--amber)' : 'var(--text3)';
+      rowParts.push(`<tr><td colspan="9" style="padding:10px 10px 4px;font-size:10px;font-weight:600;letter-spacing:0.1em;text-transform:uppercase;color:${roleColor};background:var(--bg);border-bottom:1px solid var(--border);">${roleLabel}</td></tr>`);
     }
     let staffHrs = 0;
     const cells = DAYS.map((day, di) => {
@@ -1268,13 +1219,11 @@ function renderGantt() {
   let lastRole = null;
   dayStaff.forEach(s => {
     // Role group header
-    const gShiftLabel = schedule[s.name + '||' + ganttDay]?.label || '';
-    const gGroupKey = gShiftLabel.includes('Open') ? gShiftLabel : gShiftLabel.includes('Mid') ? gShiftLabel : gShiftLabel.includes('Close') ? gShiftLabel : gShiftLabel;
-    const gGroupHeader = gShiftLabel.includes('Open') ? '— Opening' : gShiftLabel.includes('Mid') ? '— Mid' : gShiftLabel.includes('Close') ? '— Closing' : gShiftLabel || '—';
-    const gGroupColor = gShiftLabel.includes('MOD') ? 'var(--accent)' : gShiftLabel.includes('Security') ? '#3fb87a' : gShiftLabel.includes('Greeter') ? '#4a9fe8' : gShiftLabel.includes('Cashier') ? '#dc50b4' : gShiftLabel.includes('Mid') ? 'var(--amber)' : 'var(--text3)';
-    if (gGroupHeader !== lastRole) {
-      lastRole = gGroupHeader;
-      html += `<tr class="gantt-role-header"><td class="g-name" style="color:${gGroupColor};font-size:9px;letter-spacing:0.08em;text-transform:uppercase;">${gGroupHeader}</td>`;
+    if (s.role !== lastRole) {
+      lastRole = s.role;
+      const roleLabel = s.role === 'GM' ? 'General Manager' : s.role === 'Keyholder' ? 'Keyholders / MOD' : 'Associates';
+      const roleColor = s.role === 'GM' ? 'var(--accent)' : s.role === 'Keyholder' ? 'var(--amber)' : 'var(--text3)';
+      html += `<tr class="gantt-role-header"><td class="g-name" style="color:${roleColor};font-size:9px;letter-spacing:0.08em;text-transform:uppercase;">${roleLabel}</td>`;
       // Render store hours band across all hour columns
       hours.forEach((h, i) => {
         const isOpen = h.h >= 8 && h.h < (isThSat ? 23 : 22);
