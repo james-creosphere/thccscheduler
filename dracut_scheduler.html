@@ -263,7 +263,10 @@
 <div class="page" id="page-staff">
   <div class="section-header">
     <span class="section-title">Staff Directory — Dracut</span>
-    <span id="staff-count-badge" class="badge badge-purple"></span>
+    <div style="display:flex;gap:8px;align-items:center;">
+      <span id="staff-count-badge" class="badge badge-purple"></span>
+      <button class="btn btn-sm btn-primary" onclick="openAddEmployeeModal()">+ Add Employee</button>
+    </div>
   </div>
   <div class="staff-grid" id="staff-grid"></div>
 </div>
@@ -420,6 +423,71 @@
 </div>
 
 <!-- Shift edit modal -->
+
+<!-- Add Employee Modal -->
+<div class="modal-backdrop" id="add-employee-modal">
+  <div class="modal" style="width:500px;">
+    <div class="modal-title">Add Employee</div>
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">First Name</label>
+        <input type="text" id="new-first-name" placeholder="e.g. Jamie">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Last Name</label>
+        <input type="text" id="new-last-name" placeholder="e.g. Smith">
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">Role</label>
+        <select id="new-role">
+          <option value="Associate">Associate</option>
+          <option value="Keyholder">Keyholder / MOD</option>
+          <option value="GM">GM</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Prior Week Hours (optional)</label>
+        <input type="number" id="new-hours-target" placeholder="e.g. 32" min="0" max="60">
+      </div>
+    </div>
+    <div class="form-group" style="margin-bottom:12px;">
+      <label class="form-label">Days Requested Off</label>
+      <div class="day-toggles" id="new-avail-days">
+        <div class="day-toggle" data-day="Sunday">Sun</div>
+        <div class="day-toggle" data-day="Monday">Mon</div>
+        <div class="day-toggle" data-day="Tuesday">Tue</div>
+        <div class="day-toggle" data-day="Wednesday">Wed</div>
+        <div class="day-toggle" data-day="Thursday">Thu</div>
+        <div class="day-toggle" data-day="Friday">Fri</div>
+        <div class="day-toggle" data-day="Saturday">Sat</div>
+      </div>
+    </div>
+    <div class="form-group" style="margin-bottom:12px;">
+      <label class="form-label">Notes</label>
+      <textarea class="code-box" id="new-notes" style="min-height:60px;" placeholder="Availability notes, restrictions, preferences..."></textarea>
+    </div>
+    <div class="modal-actions">
+      <button class="btn" onclick="closeAddEmployeeModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="saveNewEmployee()">Add Employee</button>
+    </div>
+  </div>
+</div>
+
+<!-- Remove Employee Confirm Modal -->
+<div class="modal-backdrop" id="remove-employee-modal">
+  <div class="modal">
+    <div class="modal-title">Remove Employee</div>
+    <p style="font-size:13px;color:var(--text2);margin-bottom:1rem;" id="remove-employee-msg"></p>
+    <p style="font-size:12px;color:var(--text3);">This will remove them from the staff directory and clear all their scheduled shifts for this week.</p>
+    <div class="modal-actions">
+      <button class="btn" onclick="document.getElementById('remove-employee-modal').classList.remove('open')">Cancel</button>
+      <button class="btn" style="background:rgba(229,90,90,0.15);border-color:rgba(229,90,90,0.4);color:var(--red);" onclick="executeRemoveEmployee()">Remove</button>
+    </div>
+  </div>
+</div>
+
 <div class="modal-backdrop" id="shift-modal">
   <div class="modal">
     <div class="modal-title" id="modal-title">Edit Shift</div>
@@ -847,7 +915,10 @@ function renderStaff() {
             <div class="staff-role-card">${s.role} · ${s.hoursTarget || '—'}h/wk target</div>
           </div>
         </div>
-        <button class="btn btn-sm" onclick="editStaffAvail('${s.name}')">Edit</button>
+        <div style="display:flex;gap:4px;">
+          <button class="btn btn-sm" onclick="editStaffAvail('${s.name}')">Edit</button>
+          <button class="btn btn-sm" style="color:var(--red);border-color:rgba(229,90,90,0.3);" onclick="confirmRemoveEmployee('${s.name}')">Remove</button>
+        </div>
       </div>
       <div class="avail-days">${dayChips}</div>
       ${notes}
@@ -1154,6 +1225,88 @@ function exportSchedule() {
   generateShiftsCSV();
 }
 
+
+
+// ---- ADD / REMOVE EMPLOYEES ----
+
+function openAddEmployeeModal() {
+  // Reset form
+  document.getElementById('new-first-name').value = '';
+  document.getElementById('new-last-name').value = '';
+  document.getElementById('new-role').value = 'Associate';
+  document.getElementById('new-hours-target').value = '';
+  document.getElementById('new-notes').value = '';
+  document.querySelectorAll('#new-avail-days .day-toggle').forEach(el => {
+    el.classList.remove('off');
+    el.onclick = () => el.classList.toggle('off');
+  });
+  document.getElementById('add-employee-modal').classList.add('open');
+}
+
+function closeAddEmployeeModal() {
+  document.getElementById('add-employee-modal').classList.remove('open');
+}
+
+function saveNewEmployee() {
+  const first = document.getElementById('new-first-name').value.trim();
+  const last = document.getElementById('new-last-name').value.trim();
+  if (!first || !last) { alert('First and last name are required.'); return; }
+
+  const role = document.getElementById('new-role').value;
+  const hoursRaw = document.getElementById('new-hours-target').value;
+  const hoursTarget = hoursRaw ? parseFloat(hoursRaw) : null;
+  const notes = document.getElementById('new-notes').value.trim();
+  const daysOff = Array.from(document.querySelectorAll('#new-avail-days .day-toggle.off')).map(el => el.dataset.day);
+
+  // Format name as "Last, First" to match existing convention
+  const name = `${last}, ${first}`;
+
+  // Check for duplicates
+  if (staff.find(s => s.name.toLowerCase() === name.toLowerCase())) {
+    alert(`${name} already exists in the directory.`);
+    return;
+  }
+
+  staff.push({
+    name,
+    firstName: first,
+    role,
+    daysOff,
+    notes,
+    schedNotes: '',
+    hoursTarget,
+  });
+
+  closeAddEmployeeModal();
+  renderStaff();
+  // Also refresh schedule if open
+  if (document.getElementById('page-schedule').classList.contains('active')) renderSchedule();
+  alert(`${first} ${last} added to the directory.`);
+}
+
+let employeeToRemove = null;
+
+function confirmRemoveEmployee(name) {
+  employeeToRemove = name;
+  const s = staff.find(m => m.name === name);
+  const display = s ? `${s.firstName} ${s.name.split(',')[0].trim()}` : name;
+  document.getElementById('remove-employee-msg').textContent = `Are you sure you want to remove ${display} from the Dracut directory?`;
+  document.getElementById('remove-employee-modal').classList.add('open');
+}
+
+function executeRemoveEmployee() {
+  if (!employeeToRemove) return;
+  // Remove from staff array
+  staff = staff.filter(s => s.name !== employeeToRemove);
+  // Clear all their schedule entries
+  DAYS.forEach(day => {
+    delete schedule[employeeToRemove + '||' + day];
+  });
+  employeeToRemove = null;
+  document.getElementById('remove-employee-modal').classList.remove('open');
+  renderStaff();
+  if (document.getElementById('page-schedule').classList.contains('active')) renderSchedule();
+}
 
 // ---- GANTT ----
 let ganttDay = 'Monday';
